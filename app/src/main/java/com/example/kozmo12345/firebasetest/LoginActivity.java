@@ -14,24 +14,45 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
+import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private FirebaseAuth mAuth;
+    public FirebaseAuth mAuth;
     private static final String TAG = "Google SignIn Firebase";
     private static final int RC_GOOGLE_SIGN_IN = 1000;
     public static GoogleSignInClient mGoogleSignInClient;
+    private FirebaseUser user;
+    FirebaseFirestore db;
+    CollectionReference userColRef;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setContentView(R.layout.activity_login);
+        super.onCreate(savedInstanceState);
 
         mAuth = FirebaseAuth.getInstance();
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build();
+        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
+
+        db = FirebaseFirestore.getInstance();
+        userColRef = db.collection("users");
 
         findViewById(R.id.btnGoogle).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -39,7 +60,6 @@ public class LoginActivity extends AppCompatActivity {
                 googleSignIn();
             }
         });
-        super.onCreate(savedInstanceState);
     }
 
     @Override
@@ -55,14 +75,6 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void googleSignIn() {
-
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(getString(R.string.default_web_client_id))
-                .requestEmail()
-                .build();
-
-        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
-
         Intent signInIntent = mGoogleSignInClient.getSignInIntent();
         startActivityForResult(signInIntent, RC_GOOGLE_SIGN_IN);
     }
@@ -76,7 +88,15 @@ public class LoginActivity extends AppCompatActivity {
             // The Task returned from this call is always completed, no need to attach
             // a listener.
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
-            handleSignInResult(task);
+//            handleSignInResult(task);
+            try {
+
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                firebaseAuthWithGoogle(account);
+
+            } catch (ApiException e) {
+                Log.d(e.getMessage(), e.toString());
+            }
         }
     }
 
@@ -86,6 +106,7 @@ public class LoginActivity extends AppCompatActivity {
 
             // Signed in successfully, show authenticated UI.
             if(account != null){
+                loadUserInfo();
                 gotoMainActivity();
             }
         } catch (ApiException e) {
@@ -103,9 +124,9 @@ public class LoginActivity extends AppCompatActivity {
                 .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
-
                         if (task.isSuccessful()) {
                             loadUserInfo();
+                            //gotoMainActivity();
                         } else {
                             Toast.makeText(LoginActivity.this, "Authentication failed.",
                                     Toast.LENGTH_SHORT).show();
@@ -115,7 +136,61 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void loadUserInfo() {
-        gotoMainActivity();
+
+        user = mAuth.getCurrentUser();
+
+        userColRef.document(user.getUid())
+                .get()
+                .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
+                    @Override
+                    public void onSuccess(DocumentSnapshot documentSnapshot) {
+                        if (documentSnapshot.exists()) {
+                            Toast.makeText(LoginActivity.this, "로그인 되었습니다.", Toast.LENGTH_SHORT).show();
+
+                            gotoMainActivity();
+
+                        } else {
+                            saveUserInfo();
+                        }
+                    }
+                });
+    }
+
+    private void saveUserInfo() {
+
+        Map<String, Object> userMap = new HashMap<>();
+
+        if (user == null) return;
+
+        if (user.getEmail() != null) {
+            userMap.put("email", user.getEmail());
+        } else {
+            userMap.put("email", "none@studysemina");
+        }
+
+        if (user.getDisplayName() != null) {
+            userMap.put("nickname", user.getDisplayName());
+        } else {
+            userMap.put("nickname", "none");
+        }
+
+        userColRef.document(user.getUid())
+                .set(userMap)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        gotoMainActivity();
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.d(TAG, "saveUserInfo failed", e);
+
+                        Toast.makeText(LoginActivity.this, "saveUserInfo failed", Toast.LENGTH_SHORT).show();
+
+                    }
+                });
     }
 
     private void gotoMainActivity() {

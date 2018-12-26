@@ -1,5 +1,6 @@
 package com.example.kozmo12345.firebasetest;
 
+import android.content.Intent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -16,7 +17,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setButtonHandler(){
-
         findViewById(R.id.LogOutButton).setOnClickListener(new View.OnClickListener() {
             @Override
             public  void onClick(View view){
@@ -30,7 +30,12 @@ public class MainActivity extends AppCompatActivity {
         GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(this);
         if(account != null){
             LoginActivity.mGoogleSignInClient.signOut();
+            gotoLoginActivity();
         }
+    }
 
+    private void gotoLoginActivity() {
+        startActivity(new Intent(MainActivity.this, LoginActivity.class));
+        finish();
     }
 }
